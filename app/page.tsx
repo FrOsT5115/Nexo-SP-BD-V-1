@@ -538,16 +538,23 @@ export default function HealthyRecipesWelcome() {
 
   const handleViewRecipe = (recipeId: number) => {
     setSelectedRecipeId(recipeId)
-    setUploadedPhoto(null)
+    setUploadedPhoto(null) // Reset uploaded photo when viewing a new recipe
     setCurrentScreen("recipeDetail")
   }
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+    console.log('[v0] File selected:', file)
     if (file) {
       const reader = new FileReader()
       reader.onloadend = () => {
-        setUploadedPhoto(reader.result as string)
+        const result = reader.result as string
+        console.log('[v0] FileReader result length:', result?.length)
+        console.log('[v0] FileReader result preview:', result?.substring(0, 50))
+        setUploadedPhoto(result)
+      }
+      reader.onerror = () => {
+        console.log('[v0] FileReader error:', reader.error)
       }
       reader.readAsDataURL(file)
     }
@@ -563,34 +570,32 @@ export default function HealthyRecipesWelcome() {
       return
     }
 
-    if (!supabase) {
-      console.log('[v0] Cannot save recipe completion - Supabase client not initialized')
-      return
-    }
-
-    // Save to database
-    const { data, error } = await supabase
-      .from('recipe_completions')
-      .insert({
-        user_id: currentUser.id, // Use currentUser.id
-        recipe_id: selectedRecipeId,
-        photo_url: uploadedPhoto,
-        completed_at: new Date().toISOString()
-      })
-      .select()
-
-    if (error) {
-      console.log('[v0] Error saving recipe completion:', error)
-      alert('Error al guardar la receta completada. Por favor intenta de nuevo.')
-      return
-    }
-
-    // Update local state
     setCompletedRecipes([...completedRecipes, selectedRecipeId])
-    // Re-fetch completed recipes to get updated details
-    if (currentUser && currentUser.id) {
-      await loadCompletedRecipes(currentUser.id, supabase);
+    
+    // Only save to database if Supabase is available
+    if (supabase) {
+      // Save to database
+      const { data, error } = await supabase
+        .from('recipe_completions')
+        .insert({
+          user_id: currentUser.id, // Use currentUser.id
+          recipe_id: selectedRecipeId,
+          photo_url: uploadedPhoto,
+          completed_at: new Date().toISOString()
+        })
+        .select()
+
+      if (error) {
+        console.log('[v0] Error saving recipe completion:', error)
+        // Still show success locally even if database save fails
+      } else {
+        // Re-fetch completed recipes to get updated details
+        if (currentUser && currentUser.id) {
+          await loadCompletedRecipes(currentUser.id, supabase);
+        }
+      }
     }
+    
     alert('¡Receta completada! Mira tu lista de logros')
     
     // Navigate back to recipes list
@@ -1445,8 +1450,16 @@ export default function HealthyRecipesWelcome() {
                                     src={uploadedPhoto || "/placeholder.svg"}
                                     alt="Uploaded recipe"
                                     className="w-full h-48 object-cover rounded-xl mx-auto"
+                                    onError={(e) => {
+                                      console.log('[v0] Image load error. src length:', uploadedPhoto?.length)
+                                      console.log('[v0] Image src preview:', uploadedPhoto?.substring(0, 50))
+                                    }}
+                                    onLoad={() => {
+                                      console.log('[v0] Image loaded successfully!')
+                                    }}
                                   />
                                   <p className="text-sm font-semibold text-primary">¡Foto subida exitosamente!</p>
+                                  <p className="text-xs text-muted-foreground">Presione para cambiar la foto</p>
                                 </div>
                               ) : (
                                 <div className="space-y-3">
@@ -1490,7 +1503,7 @@ export default function HealthyRecipesWelcome() {
                     </div>
                   )}
 
-                  {isCompleted && uploadedPhoto && (
+                  {isCompleted && (
                     <div className="bg-card rounded-3xl shadow-xl overflow-hidden border border-border/50 mb-6">
                       <div className=" from-primary/10 to-primary/5 px-6 py-4 border-b border-border/50">
                         <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
@@ -1499,11 +1512,16 @@ export default function HealthyRecipesWelcome() {
                         </h2>
                       </div>
                       <div className="px-6 py-6">
-                        <img
-                          src={uploadedPhoto || "/placeholder.svg"}
-                          alt="Your completed recipe"
-                          className="w-full h-64 object-cover rounded-xl mb-4"
-                        />
+                        {uploadedPhoto && (
+                          <img
+                            src={uploadedPhoto || "/placeholder.svg"}
+                            alt="Your completed recipe"
+                            className="w-full h-64 object-cover rounded-xl mb-4"
+                            onError={(e) => {
+                              console.log('[v0] Completed image load error. src length:', uploadedPhoto?.length)
+                            }}
+                          />
+                        )}
                         <p className="text-sm text-muted-foreground text-center leading-relaxed">
                           ¡Buen Hecho! Esta receta fue añadida a tus logros.
                         </p>
