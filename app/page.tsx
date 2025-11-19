@@ -474,12 +474,18 @@ export default function HealthyRecipesWelcome() {
     try {
       console.log('[v0] Logging out user...')
       
-      const { error } = await supabase.auth.signOut()
-
-      if (error) {
-        console.error('[v0] Logout error:', error.message)
-        alert(`Error al cerrar sesión: ${error.message}`)
-        return
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        const { error } = await supabase.auth.signOut()
+        
+        if (error) {
+          console.error('[v0] Logout error:', error.message)
+          // Don't show alert for "Auth session missing" - just continue with local cleanup
+          if (error.message !== 'Auth session missing!') {
+            alert(`Error al cerrar sesión: ${error.message}`)
+          }
+        }
       }
 
       console.log('[v0] Logout successful')
@@ -499,7 +505,7 @@ export default function HealthyRecipesWelcome() {
         healthIssues: "",
       })
       setCompletedRecipes([])
-      setCompletedRecipeDetails([]) // Clear completed recipe details
+      setCompletedRecipeDetails([])
       setUploadedPhoto(null)
       // Clear streak data on logout
       setStreakData({
@@ -517,14 +523,18 @@ export default function HealthyRecipesWelcome() {
       // Reset BMI results on logout
       setBmiResult(null)
       setShowSaveGoalButton(false)
-      setShowAchievementButton(false) // Clear achievement button state
+      setShowAchievementButton(false)
 
       // Redirect to welcome screen
       setCurrentScreen("welcome")
       alert("Sesión cerrada exitosamente")
     } catch (err) {
       console.error('[v0] Unexpected logout error:', err)
-      alert(`Error inesperado: ${err}`)
+      // Still clear local state even if Supabase logout fails
+      setCurrentUser(null)
+      setIsLoggedIn(false)
+      setCurrentScreen("welcome")
+      alert("Sesión cerrada localmente")
     }
   }
 
@@ -546,15 +556,27 @@ export default function HealthyRecipesWelcome() {
     const file = e.target.files?.[0]
     console.log('[v0] File selected:', file)
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('El archivo es demasiado grande. Por favor seleccione una imagen menor a 5MB.')
+        return
+      }
+      
       const reader = new FileReader()
       reader.onloadend = () => {
         const result = reader.result as string
         console.log('[v0] FileReader result length:', result?.length)
         console.log('[v0] FileReader result preview:', result?.substring(0, 50))
-        setUploadedPhoto(result)
+        if (result && result.startsWith('data:image/')) {
+          setUploadedPhoto(result)
+          console.log('[v0] Photo uploaded successfully to state')
+        } else {
+          console.log('[v0] Invalid image data URL')
+          alert('Error al cargar la imagen. Por favor intente de nuevo.')
+        }
       }
       reader.onerror = () => {
         console.log('[v0] FileReader error:', reader.error)
+        alert('Error al leer el archivo. Por favor intente de nuevo.')
       }
       reader.readAsDataURL(file)
     }
@@ -1452,7 +1474,9 @@ export default function HealthyRecipesWelcome() {
                                     className="w-full h-48 object-cover rounded-xl mx-auto"
                                     onError={(e) => {
                                       console.log('[v0] Image load error. src length:', uploadedPhoto?.length)
-                                      console.log('[v0] Image src preview:', uploadedPhoto?.substring(0, 50))
+                                      console.log('[v0] Image src preview:', uploadedPhoto?.substring(0, 100))
+                                      setUploadedPhoto(null)
+                                      alert('Error al mostrar la imagen. Por favor intente de nuevo.')
                                     }}
                                     onLoad={() => {
                                       console.log('[v0] Image loaded successfully!')
